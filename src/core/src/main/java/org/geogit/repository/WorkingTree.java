@@ -404,11 +404,10 @@ public class WorkingTree {
      * @param listener a {@link ProgressListener} for the current process
      * @param insertedTarget if provided, inserted features will be added to this list
      * @param collectionSize number of features to add
-     * @throws Exception
      */
     public void insert(final String treePath, Iterator<? extends Feature> features,
             ProgressListener listener, @Nullable List<Node> insertedTarget,
-            @Nullable Integer collectionSize) throws Exception {
+            @Nullable Integer collectionSize) {
 
         checkArgument(collectionSize == null || collectionSize.intValue() > -1);
 
@@ -552,12 +551,11 @@ public class WorkingTree {
      * @param size number of features to add
      * @param target if specified, created {@link Node}s will be added to the list
      * @param defaultMetadataId
-     * @throws Exception
      */
     private void putInDatabase(final String parentTreePath,
             final Iterator<? extends Feature> objects, final ProgressListener progress,
             final @Nullable Integer size, @Nullable final List<Node> target,
-            final RevTreeBuilder parentTree, ObjectId defaultMetadataId) throws Exception {
+            final RevTreeBuilder parentTree, ObjectId defaultMetadataId) {
 
         checkNotNull(objects);
         checkNotNull(progress);

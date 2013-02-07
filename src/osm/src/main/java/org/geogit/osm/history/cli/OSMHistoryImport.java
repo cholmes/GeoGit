@@ -10,17 +10,16 @@ import static com.google.common.base.Preconditions.checkState;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.management.relation.Relation;
 
@@ -49,6 +48,7 @@ import org.geogit.repository.WorkingTree;
 import org.geotools.data.DataUtilities;
 import org.geotools.feature.simple.SimpleFeatureBuilder;
 import org.geotools.referencing.CRS;
+import org.geotools.util.NullProgressListener;
 import org.opengis.feature.Feature;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
@@ -60,7 +60,10 @@ import com.beust.jcommander.ParametersDelegate;
 import com.beust.jcommander.internal.Lists;
 import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Multimap;
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.Geometry;
@@ -160,7 +163,7 @@ public class OSMHistoryImport extends AbstractCommand implements CLICommand {
         while ((set = downloader.fetchNextChangeset()).isPresent()) {
             Changeset changeset = set.get();
 
-            String desc = "downloading changes of changeset " + changeset.getId() + "...";
+            String desc = "obtaining osm changeset " + changeset.getId() + "...";
             console.print(desc);
             console.flush();
 
@@ -172,7 +175,7 @@ public class OSMHistoryImport extends AbstractCommand implements CLICommand {
             // listener.started();
 
             Iterator<Change> changes = changeset.getChanges().get();
-            console.print("inserting...");
+            console.print("applying...");
             insertAndAddChanges(cli, changes);
             // listener.progress(100f);
             // listener.complete();
@@ -219,10 +222,6 @@ public class OSMHistoryImport extends AbstractCommand implements CLICommand {
         }
     }
 
-    private final AtomicBoolean hasMore = new AtomicBoolean();
-
-    private final BlockingQueue<Change> queue = new LinkedBlockingQueue<Change>(100);
-
     /**
      * @param cli
      * @param changes
@@ -247,52 +246,21 @@ public class OSMHistoryImport extends AbstractCommand implements CLICommand {
             }
         };
 
-        final ExecutorService executor = Executors.newFixedThreadPool(2);
-        hasMore.set(true);
-
-        executor.submit(new Runnable() {
-
-            @Override
-            public void run() {
-                try {
-                    while (changes.hasNext()) {
-                        Change change = changes.next();
-                        queue.put(change);
-                    }
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                    return;
-                } finally {
-                    hasMore.set(false);
-                }
-            }
-        });
-
         int cnt = 0;
-        while (hasMore.get() || queue.size() > 0) {
-            Change change;
-            try {
-                change = queue.poll(100, TimeUnit.MILLISECONDS);
-                if (change == null) {
-                    continue;
-                }
-            } catch (InterruptedException e) {
-                throw Throwables.propagate(e);
-            }
+
+        Set<String> deletes = Sets.newHashSet();
+        Multimap<String, SimpleFeature> insertsByParent = HashMultimap.create();
+
+        while (changes.hasNext()) {
+            Change change = changes.next();
             final String featurePath = featurePath(change);
             if (featurePath == null) {
                 continue;// ignores relations
             }
             cnt++;
+            final String parentPath = NodeRef.parentPath(featurePath);
             if (Change.Type.delete.equals(change.getType())) {
-                executor.submit(new Runnable() {
-                    @Override
-                    public void run() {
-                        String parentPath = NodeRef.parentPath(featurePath);
-                        String fid = NodeRef.nodeFromPath(featurePath);
-                        workTree.delete(parentPath, fid);
-                    }
-                });
+                deletes.add(featurePath);
             } else {
                 final Primitive primitive = change.getNode().isPresent() ? change.getNode().get()
                         : change.getWay().get();
@@ -301,28 +269,29 @@ public class OSMHistoryImport extends AbstractCommand implements CLICommand {
                     thisChangePointCache.put(Long.valueOf(primitive.getId()),
                             ((Point) geom).getCoordinate());
                 }
-                executor.submit(new Runnable() {
-                    @Override
-                    public void run() {
-                        SimpleFeature feature = toFeature(primitive, geom);
-                        String parentPath = NodeRef.parentPath(featurePath);
-                        workTree.insert(parentPath, feature);
-                    }
-                });
+
+                SimpleFeature feature = toFeature(primitive, geom);
+                insertsByParent.put(parentPath, feature);
             }
         }
 
-        executor.shutdown();
-        try {
-            while (!executor.awaitTermination(100, TimeUnit.MILLISECONDS)) {
-                ;
+        for (String parentPath : insertsByParent.keySet()) {
+            Collection<SimpleFeature> features = insertsByParent.get(parentPath);
+            if (features.isEmpty()) {
+                continue;
             }
-        } catch (InterruptedException e) {
-            throw Throwables.propagate(e);
-        }
 
+            Iterator<? extends Feature> iterator = features.iterator();
+            ProgressListener listener = new NullProgressListener();
+            List<org.geogit.api.Node> insertedTarget = null;
+            Integer collectionSize = Integer.valueOf(features.size());
+            workTree.insert(parentPath, iterator, listener, insertedTarget, collectionSize);
+        }
+        if (!deletes.isEmpty()) {
+            workTree.delete(deletes.iterator());
+        }
         ConsoleReader console = cli.getConsole();
-        console.print("Inserted " + cnt + " changes, staging...");
+        console.print("Applied " + cnt + " changes, staging...");
         console.flush();
 
         geogit.command(AddOp.class).call();
