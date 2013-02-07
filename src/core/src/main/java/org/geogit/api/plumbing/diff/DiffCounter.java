@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.SortedSet;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 import org.geogit.api.Bucket;
 import org.geogit.api.Node;
@@ -216,8 +217,13 @@ public class DiffCounter implements Supplier<Long> {
         ObjectId rightTreeId;
 
         for (Integer bucketId : bucketIds) {
-            leftTreeId = leftBuckets.get(bucketId).id();
-            rightTreeId = rightBuckets.get(bucketId).id();
+            @Nullable
+            Bucket leftBucket = leftBuckets.get(bucketId);
+            @Nullable
+            Bucket rightBucket = rightBuckets.get(bucketId);
+
+            leftTreeId = leftBucket == null ? null : leftBucket.id();
+            rightTreeId = rightBucket == null ? null : rightBucket.id();
 
             if (leftTreeId == null || rightTreeId == null) {
                 count += sizeOfTree(leftTreeId == null ? rightTreeId : leftTreeId);
