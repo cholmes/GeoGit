@@ -34,15 +34,15 @@
   
   -->
   <organization>
-    <name>The Open Planning Project</name>
+    <name>OpenPlans</name>
     <url>http://www.openplans.org</url>
   </organization>
   <inceptionYear>2011</inceptionYear>
 
   <licenses>
     <license>
-      <name>General Public License (GPL)</name>
-      <url>http://www.gnu.org/copyleft/gpl.txt</url>
+      <name>Modified BSD License</name>
+      <url>http://opensource.org/licenses/BSD-3-Clause</url>
     </license>
   </licenses>
   <repositories>

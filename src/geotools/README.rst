@@ -13,11 +13,11 @@ Project Lead: `Gabriel Roldan <https://github.com/groldan>`_
 Source files use the following header::
    
    /* Copyright (c) 2011 TOPP - www.openplans.org. All rights reserved.
-    * This code is licensed under the LGPL 2.1 license, available at the root
+    * This code is licensed under the Modified BSD license, available at the root
     * application directory.
     */
  
-As indicated above the code is distributed under an `LGPL 2.1 <LICENSE.txt>`_ license.
+As indicated above the code is distributed under an `Modified BSD <LICENSE.txt>`_ license.
 
 Build
 =====
